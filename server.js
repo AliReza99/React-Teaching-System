@@ -7,6 +7,7 @@ const PORT =5001;
 
 const app=express(); //initializing express app
 app.use(cors()); //use CORS as middleware
+app.use(express.static("public"));
 
 const server = app.listen(PORT,()=>{ //initialze http server on given port
     console.log(`server started on http://localhost:${PORT}`);
