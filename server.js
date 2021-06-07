@@ -13,7 +13,6 @@ const server = app.listen(PORT,()=>{ //initialze http server on given port
     console.log(`server started on http://localhost:${PORT}`);
 });
 
-
 const io = socket(server,{
     cors:{
         origin:"*",
@@ -21,50 +20,55 @@ const io = socket(server,{
     }
 });
 
-io.on('connection',(socket)=>{ //when connection made by browser
 
-    console.log('socket connection id: ', socket.id);
-    socket.on('chat', function(data){
-        // console.log(data);
+let rooms=[];
+
+io.on('connection',(socket)=>{ //when connection made by browser
+    console.log('new socket: ', socket.id);
+    socket.on('chat', (data)=>{
         io.sockets.emit('chat', data);
     });
 
-    // Handle typing event
-    socket.on('typing', function(data){
-        socket.broadcast.emit('typing', data);
-    });
-    
-    
-    
-    
-    
-    
-    
-    
-    
-    // socket.emit('me',socket.id);
+    socket.on('join-room',({username,roomID})=>{
 
-    // socket.on('disconnect',()=>{
-    //     socket.broadcast.emit('callended')
-    // });
 
-    // socket.on('calluser',(data)=>{
-    //     const {userToCall,signalData,from,name} = data;
-
-    //     io.to(userToCall).emit('calluser',{signal:signalData,from:from,name:name})
+        if(!rooms.includes(roomID)){ //push roomID to rooms if not exist already
+            rooms.push(roomID);
+        }
+        if(io.sockets.adapter.rooms.get(roomID) && io.sockets.adapter.rooms.get(roomID).has(socket.id) )
+        {
+            return;
+        }
+        socket.join(roomID); //join current user to given room name
+        socket.to(roomID).emit('new-user-joined',socket.id);
         
-    // });
 
-    // socket.on('answercall',(data)=>{
-    //     io.to(data.to).emit('callaccepted',data.signal)
-    // })
+        socket.on('offer',({offer,target})=>{
+            io.to(target).emit('recieve-offer',{
+                offer:offer,
+                target:socket.id
+            })
+        })
+
+        socket.on('answer',({answer,target})=>{//answer should be private 
+            io.to(target).emit('recieve-answer',{answer:answer,target:socket.id});
+        })
+
+
+        socket.on('disconnect', ()=> {
+            // socket.to(roomID).emit('user-disconnected',username); //not listen in front-end
+            if(io.sockets.adapter.rooms.get(roomID)===undefined){//if room was empty 
+                rooms=rooms.filter(elem => elem !== roomID); //remove room from rooms array
+            }
+        })
+        
+    });
+
+    socket.on("ice-candidate", ({target,candidate}) => {
+        io.to(target).emit("ice-candidate", {incoming:candidate,target:socket.id});
+    });
+
 })
-
-
-
-
-
-
 
 
 
