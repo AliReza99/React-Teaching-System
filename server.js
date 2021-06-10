@@ -56,7 +56,7 @@ io.on('connection',(socket)=>{ //when connection made by browser
 
 
         socket.on('disconnect', ()=> {
-            // socket.to(roomID).emit('user-disconnected',username); //not listen in front-end
+            socket.to(roomID).emit('user-disconnected',socket.id); //not listen in front-end
             if(io.sockets.adapter.rooms.get(roomID)===undefined){//if room was empty 
                 rooms=rooms.filter(elem => elem !== roomID); //remove room from rooms array
             }
