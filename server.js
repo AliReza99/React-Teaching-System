@@ -44,14 +44,14 @@ io.on('connection',(socket)=>{ //when connection made by browser
         
 
         socket.on('offer',({offer,target})=>{
-            io.to(target).emit('recieve-offer',{
+            io.to(target).emit('offer',{
                 offer:offer,
                 target:socket.id
             })
         })
 
         socket.on('answer',({answer,target})=>{//answer should be private 
-            io.to(target).emit('recieve-answer',{answer:answer,target:socket.id});
+            io.to(target).emit('answer',{answer:answer,target:socket.id});
         })
 
 
