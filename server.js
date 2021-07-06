@@ -25,12 +25,13 @@ let rooms=[];
 
 io.on('connection',(socket)=>{ //when connection made by browser
     console.log('new socket: ', socket.id);
-    socket.on('chat', (data)=>{
-        io.sockets.emit('chat', data);
-    });
-
+    
     socket.on('join-room',({username,roomID})=>{
-
+        
+        socket.on('chat', (data)=>{
+            console.log('data recieved ',data)
+            io.sockets.emit('chat', data);
+        });
 
         if(!rooms.includes(roomID)){ //push roomID to rooms if not exist already
             rooms.push(roomID);
