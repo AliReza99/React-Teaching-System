@@ -36,14 +36,15 @@ function Room(id, admin) {
     }
 }
 
-function Message(id, sender, text, date, role, rate, hardness) {
+function Message(id, sender, text, date, role, rate, hardness,repliedID) {
     this.id = id,
     this.sender = sender,
     this.text = text,
     this.date = new Date(date),
     this.role = role,
     this.rate = rate,
-    this.hardness = hardness
+    this.hardness = hardness,
+    this.repliedID=repliedID
 
     this.setRate=(rate)=>{
         this.rate=rate
@@ -60,20 +61,19 @@ function User(username) {
     }
 }
 
+//io.in(roomID) to all clients in room1
+//socket.to(roomID) to all clients in room1 except the sender
+//io.to(socketID) to specific socket id (private message )
 
 io.on('connection', (socket) => { //when connection made by browser
     // console.log('new socket: ', socket.id);
 
-    socket.on('join-room', ({
-        username,
-        roomID
-    }) => {
+    socket.on('join-room', ({ username , roomID }) => {
         let isAdmin = false;
 
         let myRoom = rooms.filter((room) => {
             return room.id === roomID;
         })[0] //return first founded room
-
 
         if (myRoom) { //if room existed
             if (myRoom.users.includes(username)) {
@@ -81,34 +81,67 @@ io.on('connection', (socket) => { //when connection made by browser
                 return;
             }
             myRoom.addUser(username);
-            console.log('new user added', rooms)
-        } else {
+            console.log('new user added', rooms);
+
+            io.to(socket.id).emit('full-chat-update',myRoom.messages);//send previous chat messages to entered user
+            
+        } 
+        else {
             isAdmin = true;
             myRoom = new Room(roomID, username); //create new room with that id and set user as admin
             rooms.push(myRoom);
             console.log('room created', myRoom);
         }
 
+        // if (io.sockets.adapter.rooms.get(roomID) && io.sockets.adapter.rooms.get(roomID).has(socket.id)) {
+        //     return;
+        // }
+        socket.join(roomID); //join current user to given room name
+        socket.to(roomID).emit('new-user-joined', {target:socket.id,username:username});
 
 
-        // socket.on('chat', ({text,role,rate,hardness})=>{
+
+        if(isAdmin){
+            io.to(socket.id).emit('set-is-admin');
+            
+            socket.on('clear-chat',()=>{
+                myRoom.messages=[];
+                io.in(roomID).emit('full-chat-update',myRoom.messages);
+            });
+            
+            socket.on('rate-message',({rate,messageID})=>{
+                const message = myRoom.messages.filter(message=>message.id===messageID)[0]
+                message.setRate(rate);
+                console.log(message);
+    
+                io.in(roomID).emit('update-message',message);
+            })
+        }
+
+
+        
         socket.on('chat', (data) => {
 
-            const rate = isAdmin ? data.rate : null;
-            const hardness = isAdmin ? data.hardness : null;
             const chatID = uuid();//generate unique id
+            let role= "message";
+            let hardness = null;
+            const rate = isAdmin ? data.rate : null;
+            
+            if(data.repliedID){
+                role="answer";
+            }
+            else if(isAdmin && data.hardness){
+                role="question";
+                hardness=data.hardness;
+            }
 
-            const msg = new Message(chatID, username, data.text, new Date(), data.role, rate, hardness);
+            const msg = new Message(chatID, username, data.text, new Date(), role, rate, hardness,data.repliedID);
             myRoom.messages.push(msg);
-            io.sockets.emit('chat', msg);
+            io.in(roomID).emit('chat',msg);
 
         });
 
-        if (io.sockets.adapter.rooms.get(roomID) && io.sockets.adapter.rooms.get(roomID).has(socket.id)) {
-            return;
-        }
-        socket.join(roomID); //join current user to given room name
-        socket.to(roomID).emit('new-user-joined', {target:socket.id,username:username});
+
 
 
         socket.on('offer', ({
