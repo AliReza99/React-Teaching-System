@@ -25,39 +25,50 @@ const io = socket(server, {
 
 let rooms = [];
 
-function Room(id, admin) {
-    this.id = id,
-        this.admin = admin,
+class Room{
+    constructor(id){
+        this.id = id,
+        // this.admin = admin,
         this.users = [],
         this.messages = []
+    }
 
-    this.addUser = (username) => {
+    addUser = (username) => {
         this.users.push(username)
     }
 }
 
-function Message(id, sender, text, date, role, rate, hardness,repliedID) {
-    this.id = id,
-    this.sender = sender,
-    this.text = text,
-    this.date = new Date(date),
-    this.role = role,
-    this.rate = rate,
-    this.hardness = hardness,
-    this.repliedID=repliedID
+class Message {
+    constructor(id, sender, text, date, role, rate, hardness,repliedID){
+        this.id = id,
+        this.sender = sender,
+        this.text = text,
+        this.date = new Date(date),
+        this.role = role,
+        this.rate = rate,
+        this.hardness = hardness,
+        this.repliedID=repliedID
+    }
 
-    this.setRate=(rate)=>{
+    setRate=(rate)=>{
         this.rate=rate
     }
 }
 
-function User(username) {
-    this.username = username,
+class User{
+    constructor(username,socketID,isAdmin=false){
+        this.username = username,
+        this.socketID=socketID;
         this.joinDate = new Date(),
-        this.leaveDate = null
+        this.leaveDate = null,
+        this.isAdmin = isAdmin;
+    }
 
-    this.setLeaveDate = (leaveDate) => {
+    setLeaveDate = (leaveDate) => {
         this.leaveDate = leaveDate
+    }
+    setIsAdmin=()=>{
+        this.isAdmin=true;
     }
 }
 
@@ -65,44 +76,58 @@ function User(username) {
 //socket.to(roomID) to all clients in room1 except the sender
 //io.to(socketID) to specific socket id (private message )
 
+const isUsernameExist=(username,arr)=>{
+    const dupsArr= arr.filter(u=>u.username === username);
+    if(dupsArr.length> 0){
+        return true;
+    }
+    return false;
+
+}
+
 io.on('connection', (socket) => { //when connection made by browser
     // console.log('new socket: ', socket.id);
 
     socket.on('join-room', ({ username , roomID }) => {
-        let isAdmin = false;
 
         let myRoom = rooms.filter((room) => {
             return room.id === roomID;
         })[0] //return first founded room
 
-        if (myRoom) { //if room existed
-            if (myRoom.users.includes(username)) {
-                console.log('user already existed in this room', username)
-                return;
-            }
-            myRoom.addUser(username);
-            console.log('new user added', rooms);
+        const user=new User(username,socket.id,false);
 
+        
+        
+        if (myRoom) { //if room existed
+
+            for(let newName=user.username,i=2;;){
+                if(!isUsernameExist(newName,myRoom.users))
+                {
+                    console.log('new name: ',newName);
+                    user.username= newName;
+                    break;
+                }
+                newName = `${user.username} ${i++}`;
+            }
+
+            myRoom.addUser(user);
             io.to(socket.id).emit('full-chat-update',myRoom.messages);//send previous chat messages to entered user
             
         } 
-        else {
-            isAdmin = true;
-            myRoom = new Room(roomID, username); //create new room with that id and set user as admin
+        else { //if room wasn't existed
+            user.setIsAdmin();
+            myRoom = new Room(roomID); //create new room with that id and set user as admin
+            myRoom.addUser(user);
             rooms.push(myRoom);
-            console.log('room created', myRoom);
         }
 
-        // if (io.sockets.adapter.rooms.get(roomID) && io.sockets.adapter.rooms.get(roomID).has(socket.id)) {
-        //     return;
-        // }
         socket.join(roomID); //join current user to given room name
-        socket.to(roomID).emit('new-user-joined', {target:socket.id,username:username});
+        socket.to(roomID).emit('new-user-joined', {target:socket.id,username:user.username});
 
 
+        io.to(socket.id).emit('self-info',{isAdmin:user.isAdmin,username:user.username});
 
-        if(isAdmin){
-            io.to(socket.id).emit('set-is-admin');
+        if(user.isAdmin){
             
             socket.on('clear-chat',()=>{
                 myRoom.messages=[];
@@ -112,7 +137,6 @@ io.on('connection', (socket) => { //when connection made by browser
             socket.on('rate-message',({rate,messageID})=>{
                 const message = myRoom.messages.filter(message=>message.id===messageID)[0]
                 message.setRate(rate);
-                console.log(message);
     
                 io.in(roomID).emit('update-message',message);
             })
@@ -125,17 +149,17 @@ io.on('connection', (socket) => { //when connection made by browser
             const chatID = uuid();//generate unique id
             let role= "message";
             let hardness = null;
-            const rate = isAdmin ? data.rate : null;
+            const rate = user.isAdmin ? data.rate : null;
             
             if(data.repliedID){
                 role="answer";
             }
-            else if(isAdmin && data.hardness){
+            else if(user.isAdmin && data.hardness){
                 role="question";
                 hardness=data.hardness;
             }
 
-            const msg = new Message(chatID, username, data.text, new Date(), role, rate, hardness,data.repliedID);
+            const msg = new Message(chatID, user.username, data.text, new Date(), role, rate, hardness,data.repliedID);
             myRoom.messages.push(msg);
             io.in(roomID).emit('chat',msg);
 
@@ -144,21 +168,15 @@ io.on('connection', (socket) => { //when connection made by browser
 
 
 
-        socket.on('offer', ({
-            offer,
-            target
-        }) => {
+        socket.on('offer', ({ offer , target }) => {
             io.to(target).emit('offer', {
                 offer: offer,
                 target: socket.id,
-                username:username
+                username:user.username
             })
         })
 
-        socket.on('answer', ({
-            answer,
-            target
-        }) => { //answer should be private 
+        socket.on('answer', ({ answer , target }) => { //answer should be private 
             io.to(target).emit('answer', {
                 answer: answer,
                 target: socket.id
@@ -167,7 +185,10 @@ io.on('connection', (socket) => { //when connection made by browser
 
 
         socket.on('disconnect', () => {
-            socket.to(roomID).emit('user-disconnected', socket.id); //not listen in front-end
+            socket.to(roomID).emit('user-disconnected', socket.id);
+            //don't remove user but set disconnect status 
+            myRoom.users=myRoom.users.filter(u=>u.socketID !== socket.id); //remove disconnected user from room
+            
             if (io.sockets.adapter.rooms.get(roomID) === undefined) { //if room was empty 
                 rooms = rooms.filter(r => r.id !== roomID); //remove room from rooms array
             }
@@ -175,10 +196,7 @@ io.on('connection', (socket) => { //when connection made by browser
 
     });
 
-    socket.on("ice-candidate", ({
-        target,
-        candidate
-    }) => {
+    socket.on("ice-candidate", ({ target , candidate }) => {
         io.to(target).emit("ice-candidate", {
             incoming: candidate,
             target: socket.id
@@ -187,10 +205,12 @@ io.on('connection', (socket) => { //when connection made by browser
 
 })
 
-
-
-
-
 app.get('*', (req, res) => { //redirect other requests to index.html 
     res.sendFile(path.join(__dirname + '/public/index.html'));
 });
+
+/*
+// if (io.sockets.adapter.rooms.get(roomID) && io.sockets.adapter.rooms.get(roomID).has(socket.id)) {
+//     return;
+// }
+*/
