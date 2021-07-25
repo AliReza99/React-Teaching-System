@@ -28,9 +28,9 @@ let rooms = [];
 class Room{
     constructor(id){
         this.id = id,
-        // this.admin = admin,
         this.users = [],
-        this.messages = []
+        this.messages = [],
+        this.whiteboardData=[]
     }
 
     addUser = (username) => {
@@ -103,7 +103,6 @@ io.on('connection', (socket) => { //when connection made by browser
             for(let newName=user.username,i=2;;){
                 if(!isUsernameExist(newName,myRoom.users))
                 {
-                    console.log('new name: ',newName);
                     user.username= newName;
                     break;
                 }
@@ -143,6 +142,18 @@ io.on('connection', (socket) => { //when connection made by browser
         }
 
 
+        socket.on('whiteboard-data',({base64ImageData})=>{
+            const payload ={
+                base64ImageData:base64ImageData,
+                sender:user.username
+            }
+            myRoom.whiteboardData.push(payload);
+            socket.to(roomID).emit('whiteboard-data',payload);
+        });
+
+        socket.on('full-whiteboard-data',()=>{
+            io.to(user.socketID).emit("full-whiteboard-data",myRoom.whiteboardData);
+        })
         
         socket.on('chat', (data) => {
 
