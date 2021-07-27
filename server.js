@@ -30,12 +30,22 @@ class Room{
         this.id = id,
         this.users = [],
         this.messages = [],
-        this.whiteboardData=[]
+        this.whiteboardData=[],
+        this.clearedMessagesIndex=0,
+        this.createDate=new Date();
     }
 
     addUser = (username) => {
         this.users.push(username)
     }
+
+    setMesssageCleared=()=>{
+        this.clearedMessagesIndex = this.messages.length;
+    }
+    getMessages=()=>{
+        return this.messages.slice(this.clearedMessagesIndex,this.messages.length);
+    }
+    
 }
 
 class Message {
@@ -59,13 +69,35 @@ class User{
     constructor(username,socketID,isAdmin=false){
         this.username = username,
         this.socketID=socketID;
+        this.firstJoinDate= new Date(),
         this.joinDate = new Date(),
-        this.leaveDate = null,
+        this.leftDate = null,
         this.isAdmin = isAdmin;
+        this.presenceTime=0;
+        // this.delay = null;
     }
-
-    setLeaveDate = (leaveDate) => {
-        this.leaveDate = leaveDate
+    getDelay=(meetingDate)=>{
+        return this.firstJoinDate - meetingDate ;
+    }
+    lefted=()=>{
+        this.presenceTime += new Date() - this.joinDate;
+        this.joinDate= null;
+        this.leftDate=new Date();
+    }
+    isOnline=()=>{
+        return this.joinDate ? true : false;
+    }
+    // joined=()=>{
+    //     if(!this.firstJoinDate){
+    //         this.firstJoinDate=new Date();
+    //     }
+    //     this.joinDate=new Date();
+    // }
+    getPresenceTime=()=>{
+        if(this.joinDate){ // doesn't lefted yet so precense time doesn't updated
+            return  new Date() - this.joinDate + this.presenceTime;
+        }
+        return this.presenceTime;
     }
     setIsAdmin=()=>{
         this.isAdmin=true;
@@ -110,7 +142,7 @@ io.on('connection', (socket) => { //when connection made by browser
             }
 
             myRoom.addUser(user);
-            io.to(socket.id).emit('full-chat-update',myRoom.messages);//send previous chat messages to entered user
+            io.to(socket.id).emit('full-chat-update',myRoom.getMessages());//send previous chat messages to entered user
             
         } 
         else { //if room wasn't existed
@@ -124,13 +156,17 @@ io.on('connection', (socket) => { //when connection made by browser
         socket.to(roomID).emit('new-user-joined', {target:socket.id,username:user.username});
 
 
-        io.to(socket.id).emit('self-info',{isAdmin:user.isAdmin,username:user.username});
+        io.to(socket.id).emit('self-info',{
+            isAdmin:user.isAdmin,
+            username:user.username,
+            roomName:myRoom.id
+        });
 
         if(user.isAdmin){
             
             socket.on('clear-chat',()=>{
-                myRoom.messages=[];
-                io.in(roomID).emit('full-chat-update',myRoom.messages);
+                myRoom.setMesssageCleared();
+                io.in(roomID).emit('full-chat-update',myRoom.getMessages());
             });
             
             socket.on('rate-message',({rate,messageID})=>{
@@ -138,6 +174,20 @@ io.on('connection', (socket) => { //when connection made by browser
                 message.setRate(rate);
     
                 io.in(roomID).emit('update-message',message);
+            });
+
+            socket.on('export-chat',()=>{
+                io.to(user.socketID).emit("export-chat",myRoom.messages);
+            })            
+            socket.on('export-activities',()=>{
+                const activities = myRoom.users.map(u=>{
+                    return {
+                        username:u.username,
+                        presenceTime:u.getPresenceTime(), //millisecond
+                        delay:u.getDelay(myRoom.createDate) //millisecond
+                    }
+                })
+                io.to(user.socketID).emit("export-activities",activities);
             })
         }
 
@@ -148,7 +198,8 @@ io.on('connection', (socket) => { //when connection made by browser
                 sender:user.username
             }
             myRoom.whiteboardData.push(payload);
-            socket.to(roomID).emit('whiteboard-data',payload);
+            io.in(roomID).emit('whiteboard-data',payload); // send to everyone except himself
+            // socket.to(roomID).emit('whiteboard-data',payload); // send to everyone except himself
         });
 
         socket.on('full-whiteboard-data',()=>{
@@ -198,7 +249,9 @@ io.on('connection', (socket) => { //when connection made by browser
         socket.on('disconnect', () => {
             socket.to(roomID).emit('user-disconnected', socket.id);
             //don't remove user but set disconnect status 
-            myRoom.users=myRoom.users.filter(u=>u.socketID !== socket.id); //remove disconnected user from room
+            user.lefted();
+            
+            // myRoom.users=myRoom.users.filter(u=>u.socketID !== socket.id); //remove disconnected user from room
             
             if (io.sockets.adapter.rooms.get(roomID) === undefined) { //if room was empty 
                 rooms = rooms.filter(r => r.id !== roomID); //remove room from rooms array
@@ -206,7 +259,7 @@ io.on('connection', (socket) => { //when connection made by browser
         })
 
     });
-
+    
     socket.on("ice-candidate", ({ target , candidate }) => {
         io.to(target).emit("ice-candidate", {
             incoming: candidate,
