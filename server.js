@@ -191,8 +191,13 @@ io.on('connection', (socket) => { //when connection made by browser
             })
         }
 
+        socket.on('disconnect-whiteboard',()=>{
+            io.in(roomID).emit('disconnect-whiteboard')
+        })
+
 
         socket.on('whiteboard-data',({base64ImageData})=>{
+            
             const payload ={
                 base64ImageData:base64ImageData,
                 sender:user.username
