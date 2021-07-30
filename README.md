@@ -1,4 +1,4 @@
-# React Teaching-System
+# React Teaching-System (React/Express)
 
 Project screenshot:
 ![Screenshot](https://raw.githubusercontent.com/AliReza99/webproj-client/main/screenshots/sc1.png)
