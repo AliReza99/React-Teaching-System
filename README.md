@@ -1,4 +1,4 @@
-# webproj-server
+# React-Teaching-System
 
 Project screenshot:
 ![Screenshot](https://raw.githubusercontent.com/AliReza99/webproj-client/main/screenshots/sc1.png)
